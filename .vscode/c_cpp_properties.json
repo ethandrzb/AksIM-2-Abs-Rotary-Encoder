@@ -1,0 +1,33 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "Drivers/**",
+                "Drivers/CMSIS/Core/Include",
+                "Drivers/STM32F4xx_HAL_Driver/Inc/**",
+                "Drivers/STM32F4xx_HAL_Driver/Inc/Legacy/**",
+                "Drivers/CMSIS/Device/ST/STM32F4xx/Include/**",
+                "Drivers/CMSIS/Include/**",
+                "Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+                "${workspaceFolder}/Drivers/STM32F4xx_HAL_Driver/Inc"
+            ],
+            "defines": [
+                "USE_HAL_DRIVER",
+                "STM32F446xx",
+                "__CC_ARM",
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "windowsSdkVersion": "10.0.19041.0",
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "windows-msvc-x64",
+            "configurationProvider": "ms-vscode.makefile-tools"
+        }
+    ],
+    "version": 4
+}

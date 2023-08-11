@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build",
+			"group": "build",
+			"type": "shell",
+			"command": "make",
+			"args": []
+		},
+		{
+			"label": "Build and upload",
+			"group": "build",
+			"type": "shell",
+			"command": "make && STM32_Programmer_CLI.exe -c port=SWD -w build/AksIM-2-Abs-Rotary-Encoder.elf && STM32_Programmer_CLI.exe -c port=SWD --start 0x0x08000000",
+			"args": []
+		}
+	]
+}
