@@ -56,7 +56,7 @@ static void MX_SPI1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-
+uint8_t encoderDataStateMachine(uint64_t encoderPacket);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -67,7 +67,9 @@ uint8_t buffer[50];
 #define ENCODER_POS_LENGTH 18
 #define RX_DATA_LENGTH 7
 uint8_t RxData[RX_DATA_LENGTH];
-uint8_t printBits = 1;
+uint8_t updateOffset = 1;
+uint8_t encDataOffset = 0;
+uint8_t printBits = 0;
 uint32_t encPosition = 0;
 uint8_t encStatus = 0;
 uint8_t encCRC = 0;
@@ -105,28 +107,101 @@ uint8_t calculateCRC(uint32_t data)
     return CRCTable[top];
 }
 
+// Pre-sequence = leading zeroes, two 1's, ACK bits, the start bit (1), and the CDS bit (0).
+// The length of this sequence can vary depending on the baud rate and implementation, so it's important to compensate for it
+uint8_t encoderDataStateMachine(uint64_t encoderPacket)
+{
+  uint8_t state = 0;
+  uint8_t currentBit = 0;
+  uint8_t preSequenceLength = 0;
+  const uint64_t LSB_MASK = 0x01;
+  for(int i = 1; i <= 64; i++)
+  {
+    currentBit = (encoderPacket >> (64 - i)) & LSB_MASK;
+
+    switch(state)
+    {
+      case 0:
+        if(currentBit)
+        {
+          state = 1;
+        }
+        break;
+      case 1:
+        if(currentBit)
+        {
+          state = 2;
+        }
+        break;
+      case 2:
+        if(!currentBit)
+        {
+          state = 3;
+        }
+        break;
+      case 3:
+        if(currentBit)
+        {
+          state = 4;
+        }
+        break;
+      case 4:
+        if(!currentBit)
+        {
+          // End of pre-sequence reached!
+          preSequenceLength = i;
+          return preSequenceLength;
+        }
+        else
+        {
+          state = 0;
+        }
+        break;
+    }
+  }
+}
+
 void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi)
 {
   // Position data is stored in RxData indices 3-5, MSB first
   // The >> 6 (or - 6 for the <<'s) is to compensate for the result being aligned to bit 23 instead of bit 17
   // The + 1 accommodates for the data being shifted in the individual packets
   // This is an 18-bit encoder, so it should output values in [0, 2^18 - 1]
-  encPosition = ((uint32_t) RxData[3]) << (16 + 1 - 6);
-  encPosition += ((uint32_t) RxData[4]) << (8 + 1 - 6);
-  // LSBs of position are stored in the upper three bits of RxData[5], so we mask out everything else
-  encPosition += (RxData[5] & 0xE0) >> 5;
+  // encPosition = ((uint32_t) RxData[3]) << (16 + 1 - 6);
+  // encPosition += ((uint32_t) RxData[4]) << (8 + 1 - 6);
+  // // LSBs of position are stored in the upper three bits of RxData[5], so we mask out everything else
+  // encPosition += (RxData[5] & 0xE0) >> 5;
 
-  encStatus = (RxData[5] & 0x18) >> 3;
+  // encStatus = (RxData[5] & 0x18) >> 3;
 
-  encCRC = (RxData[5] & 0x07) << 3;
-  encCRC += (RxData[6] & 0xE0) >> 5;
-  // crc = ~crc;
+  // encCRC = (RxData[5] & 0x07) << 3;
+  // encCRC += (RxData[6] & 0xE0) >> 5;
+  // // crc = ~crc;
+
+  // Pack each byte of RxData into 64-bit int for easier parsing in state machine
+  uint64_t encoderPacket = 0;
+  for(int i = 0; i < RX_DATA_LENGTH; i++)
+  {
+    encoderPacket += RxData[i];
+    encoderPacket <<= 8;
+  }
+
+  // Use state machine to get each field
+  // TODO: Only perform once at startup. This value shouldn't change at runtime.
+  encDataOffset = 38 - encoderDataStateMachine(encoderPacket);
+
+  encoderPacket >>= encDataOffset;
+
+  // Extract each field from right-aligned data
+  encPosition = (encoderPacket & 0x03FFFF00) >> 8;
+  encStatus = (encoderPacket & 0x000000C0) >> 6;
+  encCRC = (encoderPacket & 0x0000003F);
 
   CRCMessage = (uint32_t)(encStatus) << 28;
   CRCMessage += encPosition;
   CRCMessage <<= 2;
 
-  sprintf(buffer, "%0X %d 0x%02X 0x%0X %s\n", encPosition, encStatus, encCRC, calculateCRC(CRCMessage), (calculateCRC(CRCMessage) == encCRC) ? "CRC MATCHED" : "CRC MISMATCH");
+  sprintf(buffer, "%0X %d 0x%02X 0x%02X %s %d\n", encPosition, encStatus, encCRC, calculateCRC(CRCMessage), (calculateCRC(CRCMessage) == encCRC) ? "CRC MATCHED" : "CRC MISMATCH", encDataOffset);
   if(HAL_UART_Transmit(&huart2, buffer, sizeof(buffer), 100) != HAL_OK)
   {
     Error_Handler();
